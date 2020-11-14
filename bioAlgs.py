@@ -522,6 +522,196 @@ def convolutionCyclopeptideSequencing(spectrum, m, n):
     return leaderPeptide
 
 
+def recurseChange(money, coins, cntrs):
+    minNumberOfCoins = money
+    if money in cntrs: return cntrs[money], coins, cntrs
+    for coin in coins:
+        if coin <= money:
+            numberOfCoins, coins, cntrs = recurseChange(money - coin, coins, cntrs)
+            minNumberOfCoins = numberOfCoins + 1 if numberOfCoins + 1 < minNumberOfCoins else minNumberOfCoins
+    cntrs[money] = minNumberOfCoins
+    return minNumberOfCoins, coins, cntrs
+
+
+def changeProblem(money, coins):
+    import sys
+    sys.setrecursionlimit(money)
+    minNumberOfCoins, _, _ =  recurseChange(money, coins, {coin : 1 for coin in coins})
+    return minNumberOfCoins
+
+
+def manhattanTourist(n, m, down, right):
+    matrix = [[0 for x in range(m + 1)] for y in range(n + 1)]
+    matrix[0][0] = 0
+    for i in range(1, n + 1):
+        matrix[i][0] = matrix[i - 1][0] + down[i - 1][0]
+    for j in range(1, m + 1):
+        matrix[0][j] = matrix[0][j - 1] + right[0][j - 1]
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            matrix[i][j] = max(matrix[i - 1][j] + down[i - 1][j], matrix[i][j - 1] + right[i][j - 1])
+    return matrix[n][m]
+
+
+def readScoreMatrix(path='./BLOSUM62'):
+    scoreMatrix = dict()
+    with open(path) as f:
+        proteins = f.readline().strip().split()
+        for row in f:
+            row = row.strip().split()
+            for i in range(len(proteins)):
+                scoreMatrix[(row[0],proteins[i])] = int(row[i + 1])
+    return scoreMatrix
+
+
+def outputLCS(backtrack, aaStr1, aaStr2, i, j):
+    str1, str2 = '', ''
+    while i and j:
+        if backtrack[i][j] == 'diag':
+            str1 += aaStr1[i-1]
+            str2 += aaStr2[j-1]
+            i -= 1
+            j -= 1
+        elif backtrack[i][j] == 'down':
+            str1 += aaStr1[i-1]
+            str2 += '-'
+            i -= 1
+        else:
+            str1 += '-'
+            str2 += aaStr2[j-1]
+            j -= 1
+    while i:
+        str1 += aaStr1[i-1]
+        str2 += '-'
+        i -= 1
+    while j:
+        str1 += '-'
+        str2 += aaStr2[j-1]
+        j -= 1
+    return str1[::-1], str2[::-1]
+
+
+def LCSBackTrack(aaStr1, aaStr2, scoreMatrix, sigma=0):
+    backtrack = [[0 for i in range(len(aaStr2) + 1)] for j in range(len(aaStr1) + 1)]
+    alignmentScore = [[0 for i in range(len(aaStr2) + 1)] for j in range(len(aaStr1) + 1)]
+    for i in range(1, len(aaStr1) + 1):
+        alignmentScore[i][0] = alignmentScore[i-1][0] - sigma
+    for j in range(1, len(aaStr2) + 1):
+        alignmentScore[0][j] = alignmentScore[0][j-1] - sigma
+    for i in range(1, len(aaStr1) + 1):
+        for j in range(1,len(aaStr2) + 1):
+            alignmentScore[i][j] = max(alignmentScore[i - 1][j] - sigma, alignmentScore[i][j - 1] - sigma,
+                                       alignmentScore[i - 1][j - 1] + scoreMatrix[(aaStr1[i - 1], aaStr2[j - 1])])
+            if alignmentScore[i][j] == alignmentScore[i - 1][j] - sigma:
+                backtrack[i][j] = 'down'
+            elif alignmentScore[i][j] == alignmentScore[i][j-1] - sigma:
+                backtrack[i][j] = 'right'
+            elif alignmentScore[i][j] == alignmentScore[i - 1][j - 1] + scoreMatrix[(aaStr1[i - 1],aaStr2[j - 1])]:
+                backtrack[i][j] = 'diag'
+    return alignmentScore[len(aaStr1)][len(aaStr2)], backtrack
+
+
+def globalAlignment(aaStr1, aaStr2, sigma=5):
+    scoreMatrix = readScoreMatrix(path='./BLOSUM62')
+    alignmentScore, backtrack = LCSBackTrack(aaStr1, aaStr2, scoreMatrix, sigma=5)
+    return alignmentScore, *outputLCS(backtrack, aaStr1, aaStr2, len(aaStr1), len(aaStr2))
+
+
+def outputLocalLCS(backtrack, aaStr1, aaStr2, i, j):
+    str1, str2 = aaStr1[:i], aaStr2[:j]
+    while i and j:
+        if backtrack[i][j] == 0:
+            str2 = str2[:j] + '-' + str2[j:]
+            i -= 1
+        elif backtrack[i][j] == 1:
+            str1 = str1[:i] + '-' + str1[i:]
+            j -= 1
+        elif backtrack[i][j] == 2:
+            i -= 1
+            j -= 1
+        else:
+            break
+    return str1[i:], str2[j:]
+
+
+def localLCSBackTrack(aaStr1, aaStr2, scoreMatrix, sigma=0):
+    backtrack = [[0 for i in range(len(aaStr2) + 1)] for j in range(len(aaStr1) + 1)]
+    alignmentScore = [[0 for i in range(len(aaStr2) + 1)] for j in range(len(aaStr1) + 1)]
+    for i in range(1, len(aaStr1) + 1):
+        for j in range(1,len(aaStr2) + 1):
+            scores = np.array([alignmentScore[i - 1][j] - sigma, alignmentScore[i][j - 1] - sigma,
+                               alignmentScore[i - 1][j - 1] + scoreMatrix[(aaStr1[i - 1], aaStr2[j - 1])], 0])
+            alignmentScore[i][j] = np.max(scores)
+            backtrack[i][j] = np.argmax(scores)
+    return alignmentScore, backtrack
+
+
+def localAlignment(aaStr1, aaStr2, sigma=5):
+    scoreMatrix = readScoreMatrix(path='./PAM250')
+    alignmentScore, backtrack = localLCSBackTrack(aaStr1, aaStr2, scoreMatrix, sigma=5)
+    i, j = np.unravel_index(np.argmax(np.array(alignmentScore)), np.array(alignmentScore).shape)
+    return alignmentScore[i][j], *outputLocalLCS(backtrack, aaStr1, aaStr2, i, j)
+
+
+def outputMultipleLCS(backtrack, aaStr1, aaStr2, aaStr3, i, j, k):
+    while i and j and k:
+        if backtrack[i][j][k] == 0:
+            aaStr2 = aaStr2[:j] + "-" + aaStr2[j:]
+            aaStr3 = aaStr3[:k] + "-" + aaStr3[k:]
+            i -= 1
+        elif backtrack[i][j][k] == 1:
+            aaStr1 = aaStr1[:i] + "-" + aaStr1[i:]
+            aaStr3 = aaStr3[:k] + "-" + aaStr3[k:]
+            j -= 1
+        elif backtrack[i][j][k] == 2:
+            aaStr1 = aaStr1[:i] + "-" + aaStr1[i:]
+            aaStr2 = aaStr2[:j] + "-" + aaStr2[j:]
+            k -= 1
+        elif backtrack[i][j][k] == 3:
+            aaStr2 = aaStr2[:j] + "-" + aaStr2[j:]
+            i -= 1
+            k -= 1
+        elif backtrack[i][j][k] == 4:
+            aaStr1 = aaStr1[:i] + "-" + aaStr1[i:]
+            j -= 1
+            k -= 1
+        elif backtrack[i][j][k] == 5:
+            aaStr3 = aaStr3[:k] + "-" + aaStr3[k:]
+            i -= 1
+            j -= 1
+        else:
+            i -= 1
+            j -= 1
+            k -= 1
+    for r in range(i, max(i, j, k)):
+        aaStr1 = aaStr1[:0] + "-" + aaStr1[0:]
+    for r in range(j, max(i, j, k)):
+        aaStr2 = aaStr2[:0] + "-" + aaStr2[0:]
+    for r in range(k, max(i, j, k)):
+        aaStr3 = aaStr3[:0] + "-" + aaStr3[0:]
+    return aaStr1, aaStr2, aaStr3
+
+
+def multipleLCSBackTrack(aaStr1, aaStr2, aaStr3, sigma=0):
+    backtrack = np.zeros((len(aaStr1) + 1, len(aaStr2) + 1, len(aaStr3) + 1))
+    alignmentScore = np.zeros((len(aaStr1) + 1, len(aaStr2) + 1, len(aaStr3) + 1))
+    for i in range(1, len(aaStr1) + 1):
+        for j in range(1, len(aaStr2) + 1):
+            for k in range(1, len(aaStr3) + 1):
+                scores = np.array([alignmentScore[i - 1][j][k] - sigma, alignmentScore[i][j - 1][k] - sigma,
+                                   alignmentScore[i][j][k - 1] - sigma, alignmentScore[i - 1][j][k - 1],
+                                   alignmentScore[i][j - 1][k - 1] - sigma, alignmentScore[i - 1][j - 1][k],
+                                   alignmentScore[i-1][j-1][k-1] + 1 if aaStr1[i - 1] == aaStr2[j - 1] == aaStr3[k - 1] else 0])
+                alignmentScore[i][j][k] = np.max(scores)
+                backtrack[i][j][k] = np.argmax(scores)
+    return int(alignmentScore[-1][-1][-1]), backtrack
+
+
+def multipleLongestCommonSubsequence(aaStr1, aaStr2, aaStr3, sigma=0):
+    alignmentScore, backtrack = multipleLCSBackTrack(aaStr1, aaStr2, aaStr3, sigma)
+    return alignmentScore, *outputMultipleLCS(backtrack, aaStr1, aaStr2, aaStr3, len(aaStr1), len(aaStr2), len(aaStr3))
+
+
 if __name__=='__main__':
     # genome = 'GTCTTTAGTCTTTAGTCTCTTTAGCAATCTTTAGATCTTTAGGATTCTATCTTTAGTCTTTAGGCTGCCGTTCTTTAGGGCATCTTTAGATTCTTTAGTCTTTAGTCTTTAGTGCTGTTTCTTTAGTCTTTAGTCTTTAGTCTTTAGGTCTTTAGTCTTTAGACCAATTCTTTAGCTCTTTAGAAGGAAGGATCTTTAGTCTTTAGAAACGTCTTTAGTCTTTAGCTCTTTAGTCTTTAGTAAGAGTCTTTAGTTTTTACCCGTTCTTTAGGATGATCTTTAGTGATCTTTAGGCTCTTTAGTCTTTAGGGATCTTTAGTCTTTAGCCGAAAAGTTGTCTTTAGTAATGATCTTTAGAGGTCTTTAGGTCTTTAGTCTTTAGCTCTTTAGGGACGGAATCTTTAGCTCTTTAGCGTCCTCTTTAGTCCTCTTTAGTGCTCGACGATACTGTCTTTAGTCTTTAGTAATCTCTTTAGAGTTCTTTAGTCCGTCTTTAGCCTTTATCTTTAGTGATATTTTTGTCTTTAGCGTCTTTAGACATCTCTTTAGTGTCTTTAGGTCTTTAGCGCATCTTTAGTCTTTAGTCTGTCTTTAGTCTTTAGATCTTTAGAACTCTTTAGGGCTAGTCTTTAGCTCTTTAGCAGGTCTTTAGTCTTTAGGGTTTCTTTAGTCGGGCGGTCTTTAGTTCTTTAGTCTTTAGGGCATCTTTAGTCTTTAGTCTTTAGTTCTATCTTTAGTTTCTCTTTAGTCTTTAGTCTTTAGTCTTTAGTCTTTAGATCTTTAGTTCTTTAGATCTTTAGCTCTTTAGGATCCATTCTTTAGTCTTTAGTTCTTTAGCTCTTTAGCATTATCTTTAGTCTTTAGTCTTTAGTCTTTAGGGGATCTTTAGTCTTTAGGAGTCTTTAGGTCTCTTTAGGCGGATATCTTTAG'
     # pattern = 'TCTTTAGTC'
@@ -730,4 +920,37 @@ if __name__=='__main__':
     # spectrum = list(map(int, '0 87 99 99 103 113 113 115 128 128 129 131 137 163 163 198 202 227 231 232 236 242 244 244 250 250 278 291 291 326 335 345 349 357 360 365 365 373 378 381 390 394 406 448 463 473 476 480 481 486 489 493 493 494 505 523 528 576 579 589 592 593 596 604 604 610 623 626 636 656 656 691 692 707 717 722 723 725 726 739 741 755 759 767 784 820 821 825 828 838 854 854 854 854 870 880 883 887 888 924 941 949 953 967 969 982 983 985 986 991 1001 1016 1017 1052 1052 1072 1082 1085 1098 1104 1104 1112 1115 1116 1119 1129 1132 1180 1185 1203 1214 1215 1215 1219 1222 1227 1228 1232 1235 1245 1260 1302 1314 1318 1327 1330 1335 1343 1343 1348 1351 1359 1363 1373 1382 1417 1417 1430 1458 1458 1464 1464 1466 1472 1476 1477 1481 1506 1510 1545 1545 1571 1577 1579 1580 1580 1593 1595 1595 1605 1609 1609 1621 1708'.split()))
     # ans = convolutionCyclopeptideSequencing(spectrum, m, n)
 
-    print('-'.join(map(str, ans)))
+
+    ##### problem 21 #####
+    # money = 18142
+    # coins = [1,3,5,15,17,19,24]
+    # ans = changeProblem(money, coins)
+
+
+    ##### problem 22 #####
+    # data = open('../../Downloads/rosalind_ba5b (3).txt').read().splitlines()
+    # n, m = list(map(int, data[0].split()))
+    # down = [list(map(int, data[i].split())) for i in range(1, n + 1)]
+    # right = [list(map(int, data[i].split())) for i in range(n + 2, 2 * n + 3)]
+    # ans = manhattanTourist(n, m, down, right)
+
+
+    ##### problem 23 #####
+    # data = open('../../Downloads/rosalind_ba5e (11).txt').read().splitlines()
+    # aaStr1 = data[0]
+    # aaStr2 = data[1]
+    # ans = globalAlignment(aaStr1, aaStr2)
+
+
+    ##### problem 24 #####
+    # data = open('../../Downloads/rosalind_ba5f (16).txt').read().splitlines()
+    # aaStr1 = data[0]
+    # aaStr2 = data[1]
+    # ans = localAlignment(aaStr1, aaStr2)
+
+
+    ##### problem 25 #####
+    data = open('../../Downloads/rosalind_ba5m (2).txt').read().splitlines()
+    ans = multipleLongestCommonSubsequence(*data)
+
+    print(*ans, sep='\n')
