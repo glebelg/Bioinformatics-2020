@@ -1,3 +1,4 @@
+import re
 import random
 import numpy as np
 
@@ -333,7 +334,6 @@ def kUniversalCircularString(k):
     patterns = []
     i = 0
     while len('{0:b}'.format(i)) <= k:
-        print('{0:b}'.format(i))
         patterns.append('{0:b}'.format(i))
         i += 1
     patterns = ['0' * (k - len(p)) + p for p in patterns]
@@ -712,6 +712,161 @@ def multipleLongestCommonSubsequence(aaStr1, aaStr2, aaStr3, sigma=0):
     return alignmentScore, *outputMultipleLCS(backtrack, aaStr1, aaStr2, aaStr3, len(aaStr1), len(aaStr2), len(aaStr3))
 
 
+def greedySorting(permutation):
+    sortPermutation = []
+    for k in range(len(permutation)):
+        if abs(permutation[k]) != k + 1:
+            permByRev = [-permutation[k]]
+            for i in range(k+1, len(permutation)):
+                permByRev.append(-permutation[i])
+                if abs(permutation[i]) == k + 1:
+                    permByRev = list(reversed(permByRev))
+                    permutation[k:i+1] = permByRev
+                    sortPermutation.append(permutation.copy())
+        if permutation[k] < 0:
+            permutation[k] = -permutation[k]
+            sortPermutation.append(permutation.copy())
+    return sortPermutation
+
+
+def numberOfBreaks(permutation):
+    permutation = [0] + permutation + [len(permutation) + 1]
+    return sum([1 for i in range(len(permutation) - 1) if permutation[i] + 1 != permutation[i + 1]])
+
+
+def twoBreakDistance(P, Q):
+    edges = {}
+    for permutation in P + Q:
+        for i in range(len(permutation)):
+            edges[permutation[i]] = edges.get(permutation[i], []) + [-1 * permutation[(i + 1) % len(permutation)]]
+            edges[-1 * permutation[(i + 1) % len(permutation)]] = edges.get(-1 * permutation[(i + 1) % len(permutation)], []) + [permutation[i]]
+    cycleCnt = 0
+    while len(edges) > 0:
+        cur_edge = list(edges.keys())[0]
+        while cur_edge in edges:
+            node = edges[cur_edge][0]
+            if len(edges[cur_edge]) == 1:
+                del edges[cur_edge]
+            else:
+                edges[cur_edge] = edges[cur_edge][1:]
+            if edges[node] == [cur_edge]:
+                del edges[node]
+            else:
+                edges[node].remove(cur_edge)
+            cur_edge = node
+        cycleCnt += 1
+    return sum(map(len,P)) - cycleCnt
+
+
+def chromosomeToCycle(chromosome):
+    nodes = []
+    for j in range(len(chromosome)):
+        i = chromosome[j]
+        if i > 0:
+            nodes.append(2 * i - 1)
+            nodes.append(2 * i)
+        else:
+            nodes.append(-2 * i)
+            nodes.append(-2 * i - 1)
+    return nodes
+
+
+def cycleToChromosome(nodes):
+    chromosome = []
+    for j in range(len(nodes) // 2):
+        if nodes[2 * j] < nodes[2 * j + 1]:
+            chromosome.append(nodes[2 * j + 1] // 2)
+        else:
+            chromosome.append(-nodes[2 * j] // 2)
+    return chromosome
+
+
+def coloredEdges(P):
+    edges = set()
+    for chromosome in P:
+        nodes = chromosomeToCycle(chromosome)
+        for j in range(len(nodes) // 2):
+            edges.add((nodes[2 * j + 1], nodes[(2 * j + 2) % len(nodes)]))
+    return sorted(list(map(list, edges)))
+
+
+def graphToGenome(genomeGraph):
+    genome, used = [], []
+    graph = [0] * 2 * len(genomeGraph)
+    for edge in genomeGraph:
+        graph[edge[0]-1] = edge[1] - 1
+        graph[edge[1]-1] = edge[0] - 1
+    for edge in genomeGraph:
+        start = edge[0]
+        if start in used: continue
+        used.append(start)
+        end = start + 1 if start % 2 else start - 1
+        cur = []
+        while True:
+            cur.append(-(start + 1) // 2 if start % 2 else start // 2)
+            used.append(graph[start-1] + 1)
+            if graph[start-1] + 1 == end:
+                genome.append(cur)
+                break
+            start = graph[start-1] + 2 if (graph[start-1] + 1) % 2 else graph[start-1]
+            used.append(start)
+    return genome
+
+
+def twoBreakOnGenomeGraph(genomeGraph, i, i_, j, j_):
+    e1 = [i, i_] if [i, i_] in genomeGraph else [i_, i]
+    e2 = [j, j_] if [j, j_] in genomeGraph else [j_, j]
+    genomeGraph.remove(e1)
+    genomeGraph.remove(e2)
+    return genomeGraph + [[i, j], [i_, j_]]
+
+
+def twoBreakOnGenome(P, i, i_, j, j_):
+    genomeGraph = coloredEdges(P)
+    genomeGraph = twoBreakOnGenomeGraph(genomeGraph, i, i_, j, j_)
+    return graphToGenome(genomeGraph)
+
+
+def buildGraph(P, Q):
+    graph = [[0, 0] for _ in range(len(P) + len(Q))]
+    for p, q in zip(P, Q):
+        graph[p[0]-1][0] = p[1] - 1
+        graph[p[1]-1][0] = p[0] - 1
+        graph[q[0]-1][1] = q[1] - 1
+        graph[q[1]-1][1] = q[0] - 1
+    return graph
+
+
+def coloredCycles(P, Q):
+    coloredCyc, used = [], [0] * (len(P) + len(Q))
+    graph = buildGraph(P, Q)
+    for v in range(len(P) + len(Q)):
+        if used[v]:
+            continue
+        used[v] = 1
+        start, color = v, 0
+        cyc = [start + 1]
+        while True:
+            if graph[v][color] == start:
+                coloredCyc.append(cyc)
+                break
+            v, color = graph[v][color], ~color
+            used[v] = 1
+            cyc.append(v + 1)
+    return coloredCyc
+
+
+def twoBreakSorting(P, Q):
+    sequences = [P]
+    while twoBreakDistance(P, Q) > 0:
+        for cycle in coloredCycles(coloredEdges(P), coloredEdges(Q)):
+            if len(cycle) > 3:
+                P = twoBreakOnGenome(P, cycle[0], cycle[1], cycle[3], cycle[2])
+                sequences.append(P)
+                break
+    return sequences
+
+
 if __name__=='__main__':
     # genome = 'GTCTTTAGTCTTTAGTCTCTTTAGCAATCTTTAGATCTTTAGGATTCTATCTTTAGTCTTTAGGCTGCCGTTCTTTAGGGCATCTTTAGATTCTTTAGTCTTTAGTCTTTAGTGCTGTTTCTTTAGTCTTTAGTCTTTAGTCTTTAGGTCTTTAGTCTTTAGACCAATTCTTTAGCTCTTTAGAAGGAAGGATCTTTAGTCTTTAGAAACGTCTTTAGTCTTTAGCTCTTTAGTCTTTAGTAAGAGTCTTTAGTTTTTACCCGTTCTTTAGGATGATCTTTAGTGATCTTTAGGCTCTTTAGTCTTTAGGGATCTTTAGTCTTTAGCCGAAAAGTTGTCTTTAGTAATGATCTTTAGAGGTCTTTAGGTCTTTAGTCTTTAGCTCTTTAGGGACGGAATCTTTAGCTCTTTAGCGTCCTCTTTAGTCCTCTTTAGTGCTCGACGATACTGTCTTTAGTCTTTAGTAATCTCTTTAGAGTTCTTTAGTCCGTCTTTAGCCTTTATCTTTAGTGATATTTTTGTCTTTAGCGTCTTTAGACATCTCTTTAGTGTCTTTAGGTCTTTAGCGCATCTTTAGTCTTTAGTCTGTCTTTAGTCTTTAGATCTTTAGAACTCTTTAGGGCTAGTCTTTAGCTCTTTAGCAGGTCTTTAGTCTTTAGGGTTTCTTTAGTCGGGCGGTCTTTAGTTCTTTAGTCTTTAGGGCATCTTTAGTCTTTAGTCTTTAGTTCTATCTTTAGTTTCTCTTTAGTCTTTAGTCTTTAGTCTTTAGTCTTTAGATCTTTAGTTCTTTAGATCTTTAGCTCTTTAGGATCCATTCTTTAGTCTTTAGTTCTTTAGCTCTTTAGCATTATCTTTAGTCTTTAGTCTTTAGTCTTTAGGGGATCTTTAGTCTTTAGGAGTCTTTAGGTCTCTTTAGGCGGATATCTTTAG'
     # pattern = 'TCTTTAGTC'
@@ -950,7 +1105,64 @@ if __name__=='__main__':
 
 
     ##### problem 25 #####
-    data = open('../../Downloads/rosalind_ba5m (2).txt').read().splitlines()
-    ans = multipleLongestCommonSubsequence(*data)
+    # data = open('../../Downloads/rosalind_ba5m (2).txt').read().splitlines()
+    # ans = multipleLongestCommonSubsequence(*data)
 
-    print(*ans, sep='\n')
+
+    ##### problem 26 #####
+    # permutation = '(-39 -123 +101 +110 -36 -94 +64 +134 -87 +73 +76 -21 -137 -65 -88 +23 +60 +80 -7 +78 -63 -22 -104 +107 +126 -93 +125 +2 +122 +131 +49 -118 +37 +25 -3 -8 -121 -47 +82 +18 +61 +103 +14 -57 +85 +46 -50 +26 +79 -109 +129 +27 -17 +41 -115 +108 -99 -140 -33 -72 +74 +70 -75 +141 -66 +43 +130 -42 +1 -53 +16 +71 +124 -24 +86 +29 +127 +77 -35 -9 -20 +112 -51 -133 -135 +81 -67 -132 -4 -106 +52 -116 +15 -98 -28 +13 -34 -30 -38 +48 +114 +117 +102 -10 +58 +95 -54 -45 +90 +138 -6 -44 +5 +83 -12 +19 +40 -136 +113 -111 -59 +89 -91 -105 -55 -139 -69 -119 +97 +120 +92 -56 +96 +62 -84 -31 +11 +128 +100 -68 -32)'
+    # ans = greedySorting([int(x) for x in re.sub(r'[()]', '', permutation).split()])
+    # print(*[f"({' '.join([f'+{a}' if a > 0 else str(a) for a in row])})" for row in ans], sep='\n')
+
+
+    ##### problem 27 #####
+    # permutation = open('../../Downloads/rosalind_ba6b (2).txt').read()
+    # ans = numberOfBreaks([int(x) for x in re.sub(r'[()]', '', permutation).split()])
+
+
+    ##### problem 28 #####
+    # data = open('../../Downloads/rosalind_ba6c (3).txt').read().splitlines()
+    # p = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in data[0].split(')(')]
+    # q = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in data[1].split(')(')]
+    # ans = twoBreakDistance(p, q)
+
+
+    # chromosome = '(+1 +2 +3 -4 +5 -6 +7 -8 +9 +10 -11 -12 +13 -14 +15 +16 +17 +18 +19 -20 -21 -22 +23 +24 +25 +26 +27 +28 +29 +30 +31 -32 +33 -34 +35 +36 +37 -38 +39 +40 -41 -42 -43 -44 -45 -46 -47 +48 +49 +50 -51 -52 -53 -54 +55 -56 +57 -58 -59 +60 +61 +62 -63 +64)'
+    # ans = chromosomeToCycle([int(x) for x in re.sub(r'[()]', '', chromosome).split()])
+
+
+    # nodes = '(2 1 3 4 6 5 7 8 10 9 12 11 14 13 16 15 17 18 20 19 22 21 24 23 26 25 27 28 29 30 31 32 33 34 36 35 37 38 39 40 41 42 44 43 45 46 47 48 49 50 52 51 54 53 56 55 57 58 59 60 61 62 64 63 65 66 67 68 70 69 72 71 73 74 75 76 77 78 80 79 81 82 83 84 86 85 87 88 89 90 92 91 94 93 95 96 97 98 100 99 102 101 104 103 105 106 107 108 109 110 111 112 114 113 116 115 117 118 119 120)'
+    # ans = cycleToChromosome([int(x) for x in re.sub(r'[()]', '', nodes).split()])
+
+
+    # P = '(-1 +2 +3 +4 -5 +6 +7 -8 +9 +10 +11 -12 -13 +14 +15 +16 +17 -18 -19 -20 +21 -22)(+23 -24 +25 +26 -27 +28 -29 +30 +31 -32 -33 +34 +35 +36 +37 -38 -39 -40 +41 +42 -43 -44 -45 -46 +47 +48 -49)(-50 +51 +52 -53 -54 -55 +56 -57 +58 -59 -60 -61 -62 -63 -64 +65 +66 -67 -68 +69 -70 +71 -72)(-73 +74 -75 +76 +77 -78 +79 +80 -81 +82 -83 -84 +85 +86 +87 -88 -89 -90 -91 +92 +93 +94 -95 +96 -97 -98 -99 -100)(-101 +102 +103 +104 -105 -106 +107 -108 -109 +110 -111 -112 -113 -114 +115 +116 +117 -118 -119 +120 +121 +122 +123 +124 +125)(-126 -127 -128 +129 +130 -131 +132 -133 -134 +135 -136 +137 +138 -139 -140 +141 +142 -143 +144 -145 -146 +147 +148 -149 +150 +151 +152 -153 +154)(+155 +156 +157 -158 -159 +160 -161 +162 +163 -164 -165 -166 -167 +168 +169 -170 +171 -172 -173 -174 -175 -176 +177 -178)'
+    # P = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in P.split(')(')]
+    # ans = coloredEdges(P)
+
+
+    # genomeGraph = '(2, 3), (4, 6), (5, 8), (7, 9), (10, 12), (11, 14), (13, 15), (16, 18), (17, 19), (20, 21), (22, 24), (23, 25), (26, 27), (28, 29), (30, 31), (32, 34), (33, 35), (36, 37), (38, 40), (39, 41), (42, 43), (44, 45), (46, 47), (48, 49), (50, 1), (52, 53), (54, 55), (56, 57), (58, 60), (59, 62), (61, 63), (64, 65), (66, 68), (67, 69), (70, 72), (71, 74), (73, 75), (76, 78), (77, 80), (79, 82), (81, 83), (84, 85), (86, 87), (88, 89), (90, 92), (91, 94), (93, 95), (96, 97), (98, 99), (100, 102), (101, 104), (103, 105), (106, 108), (107, 51), (110, 112), (111, 114), (113, 115), (116, 117), (118, 120), (119, 121), (122, 124), (123, 126), (125, 128), (127, 129), (130, 132), (131, 133), (134, 136), (135, 138), (137, 139), (140, 141), (142, 143), (144, 145), (146, 148), (147, 150), (149, 152), (151, 153), (154, 155), (156, 157), (158, 159), (160, 162), (161, 164), (163, 109), (166, 167), (168, 170), (169, 171), (172, 174), (173, 175), (176, 178), (177, 180), (179, 181), (182, 184), (183, 186), (185, 187), (188, 189), (190, 191), (192, 193), (194, 195), (196, 197), (198, 199), (200, 201), (202, 203), (204, 206), (205, 208), (207, 210), (209, 211), (212, 214), (213, 165), (215, 218), (217, 220), (219, 222), (221, 224), (223, 226), (225, 227), (228, 230), (229, 231), (232, 233), (234, 236), (235, 237), (238, 240), (239, 241), (242, 243), (244, 246), (245, 247), (248, 249), (250, 252), (251, 253), (254, 255), (256, 258), (257, 260), (259, 261), (262, 264), (263, 265), (266, 216), (267, 270), (269, 271), (272, 274), (273, 275), (276, 278), (277, 279), (280, 281), (282, 284), (283, 286), (285, 287), (288, 290), (289, 292), (291, 293), (294, 295), (296, 297), (298, 299), (300, 302), (301, 303), (304, 305), (306, 308), (307, 309), (310, 268), (311, 313), (314, 316), (315, 317), (318, 320), (319, 322), (321, 324), (323, 326), (325, 328), (327, 330), (329, 332), (331, 334), (333, 336), (335, 337), (338, 340), (339, 342), (341, 344), (343, 345), (346, 347), (348, 349), (350, 352), (351, 353), (354, 355), (356, 358), (357, 359), (360, 362), (361, 364), (363, 365), (366, 312)'
+    # genomeGraph = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in genomeGraph.replace(',', '').split(') (')]
+    # ans = graphToGenome(genomeGraph)
+
+
+    # genomeGraph = '(2, 3), (4, 5), (6, 7), (8, 10), (9, 12), (11, 13), (14, 16), (15, 18), (17, 19), (20, 22), (21, 24), (23, 26), (25, 28), (27, 30), (29, 32), (31, 34), (33, 36), (35, 37), (38, 39), (40, 41), (42, 44), (43, 45), (46, 48), (47, 50), (49, 52), (51, 53), (54, 55), (56, 58), (57, 60), (59, 62), (61, 64), (63, 66), (65, 68), (67, 69), (70, 71), (72, 74), (73, 75), (76, 78), (77, 80), (79, 82), (81, 84), (83, 85), (86, 88), (87, 89), (90, 92), (91, 94), (93, 96), (95, 98), (97, 99), (100, 102), (101, 104), (103, 106), (105, 107), (108, 109), (110, 112), (111, 113), (114, 116), (115, 117), (118, 119), (120, 121), (122, 124), (123, 126), (125, 127), (128, 1)'
+    # genomeGraph = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in genomeGraph.replace(',', '').split(') (')]
+    # i, i_, j, j_ = 128, 1, 2, 3
+    # ans = twoBreakOnGenomeGraph(genomeGraph, i, i_, j, j_)
+
+
+    ##### problem 29 #####
+    # data = open('../../Downloads/rosalind_ba6d (9).txt').read().splitlines()
+    # # data = ['(+1 -2 -3 +4)', '(+1 +2 -4 -3)']
+    # p = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in data[0].split(')(')]
+    # q = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in data[1].split(')(')]
+    # ans = twoBreakSorting(p, q)
+
+
+    ##### problem 30 #####
+    P = '(-1 -2 +3 +4 +5 +6 -7 -8 +9 +10 -11 -12 -13 -14 -15 -16 -17 -18 +19 -20 -21 -22 -23 +24 +25 -26 -27 -28 +29 -30 -31 +32 -33 -34 +35 -36 -37 +38 -39 -40 +41 -42 +43 -44 -45 +46 +47 -48 +49 +50 -51 -52 -53 -54 +55 +56 -57 -58 +59 -60 -61 -62 -63 +64 -65)'
+    P = [[int(x) for x in re.sub(r'[()]', '', d).split()] for d in P.split(')(')]
+    i, i_, j, j_ = 101, 104, 86, 88
+    ans = twoBreakOnGenome(P, i, i_, j, j_)
+
+    print(*[f"({' '.join([f'+{a}' if a > 0 else str(a) for a in r])})" for r in ans], sep=' ')
